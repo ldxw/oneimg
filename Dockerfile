@@ -53,7 +53,7 @@ COPY --from=backend-builder /app/main ./
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # 复制配置文件和创建必要目录
-COPY .env ./
+COPY .env.example ./.env
 RUN mkdir -p ./data ./uploads
 
 # 暴露端口
