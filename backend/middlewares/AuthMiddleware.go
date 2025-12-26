@@ -2,6 +2,9 @@ package middlewares
 
 import (
 	"net/http"
+	"oneimg/backend/models"
+	"oneimg/backend/utils/settings"
+	"strings"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -16,12 +19,31 @@ type AuthResponse struct {
 // AuthMiddleware Session认证中间件
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+
+		setting, _ := settings.GetSettings()
+		apiToken := ""
+		if setting.StartAPI {
+			// 获取请求头中的token
+			authHeader := c.Request.Header.Get("Authorization")
+			parts := strings.SplitN(authHeader, "=", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[0]) == "oneimg_token" {
+				apiToken = strings.TrimSpace(parts[1])
+			}
+
+			if validateToken(setting, apiToken) {
+				c.Set("user_id", 1)
+				c.Set("user_role", 1)
+				c.Set("username", "admin")
+				c.Next()
+			}
+		}
+
 		// 获取session
 		session := sessions.Default(c)
 
 		// 检查是否已登录
 		loggedIn := session.Get("logged_in")
-		if loggedIn == nil || loggedIn != true {
+		if (loggedIn == nil || loggedIn != true) && apiToken == "" {
 			c.JSON(http.StatusUnauthorized, AuthResponse{
 				Code:    401,
 				Message: "用户未登录",
@@ -32,6 +54,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		// 获取用户信息
 		userID := session.Get("user_id")
+		userRole := session.Get("user_role")
 		username := session.Get("username")
 
 		if userID == nil || username == nil {
@@ -47,6 +70,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		session.Set("logged_in", true)
 
 		c.Set("user_id", userID)
+		c.Set("user_role", userRole)
 		c.Set("username", username)
 
 		// 继续处理请求
@@ -54,12 +78,19 @@ func AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
+func validateToken(setting models.Settings, token string) bool {
+	if token == "" || setting.APIToken == "" {
+		return false
+	}
+	return token == setting.APIToken
+}
+
 func AdminOnlyMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 获取用户ID
-		userID := c.GetInt("user_id")
+		userRole := c.GetInt("user_role")
 
-		if userID != 1 {
+		if userRole != 1 {
 			c.JSON(http.StatusForbidden, AuthResponse{
 				Code:    403,
 				Message: "无权访问",

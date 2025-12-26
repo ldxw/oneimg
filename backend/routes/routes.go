@@ -42,7 +42,7 @@ func SetupRoutes(frontendFS embed.FS) *gin.Engine {
 	if err != nil {
 		panic("加载前端文件失败：" + err.Error())
 	}
-	assetsFS, err := fs.Sub(distFS, "assets")
+	assetsFS, _ := fs.Sub(distFS, "assets")
 	r.StaticFS("/assets", http.FS(assetsFS))
 
 	// 静态资源
@@ -58,6 +58,10 @@ func SetupRoutes(frontendFS embed.FS) *gin.Engine {
 		api.GET("/logout", controllers.Logout)
 		// 返回登录设置
 		api.GET("/settings/login", controllers.GetLoginSettings)
+		// 返回SEO设置
+		api.GET("/settings/seo", controllers.GetSEOSettings)
+		// 随机图片
+		api.GET("/images/random", controllers.GetRandomImages)
 
 		// 需要认证的接口分组（应用AuthMiddleware）
 		auth := api.Group("")
@@ -65,6 +69,10 @@ func SetupRoutes(frontendFS embed.FS) *gin.Engine {
 		{
 			// 用户信息接口
 			auth.GET("/user/status", controllers.CheckLoginStatus)
+
+			// 标签管理接口
+			auth.GET("/tags", controllers.GetTags)
+			auth.DELETE("/tags/:id", controllers.DeleteTag)
 
 			// 统计数据
 			auth.GET("/stats/dashboard", controllers.GetDashboardStats)
@@ -76,10 +84,17 @@ func SetupRoutes(frontendFS embed.FS) *gin.Engine {
 			auth.DELETE("/images/:id", controllers.DeleteImage)
 			auth.GET("/images", controllers.GetImageList)
 			auth.GET("/images/:id", controllers.GetImageDetail)
+			auth.POST("/images/tag", controllers.AddImageTag)
+			auth.DELETE("/images/tag", controllers.DeleteImageTag)
+			auth.DELETE("/images/tags", controllers.DeleteImageTags) // 批量删除图片标签
+			auth.POST("/images/tags", controllers.AddImageTags)
 
 			// 需要管理员权限
 			auth.Use(middlewares.AdminOnlyMiddleware())
 			{
+				// 新增标签
+				auth.POST("/tags", controllers.AddTag)
+
 				// 账户管理接口
 				auth.POST("/account/change", controllers.ChangeAccountInfo)
 				auth.POST("/sessions/clear", controllers.ClearAllSessions)
@@ -99,24 +114,17 @@ func SetupRoutes(frontendFS embed.FS) *gin.Engine {
 			return
 		}
 
-		// 【新增调试日志】打印当前distFS的根路径和文件列表
-		log.Printf("尝试读取index.html，distFS根路径：%v", distFS)
-		// 列出distFS中的文件（调试用）
 		if files, err := fs.ReadDir(distFS, "."); err == nil {
 			var fileNames []string
 			for _, f := range files {
 				fileNames = append(fileNames, f.Name())
 			}
-			log.Printf("distFS下的文件列表：%v", fileNames)
+			log.Printf("读取distFS文件列表成功：%v", fileNames)
 		} else {
 			log.Printf("读取distFS文件列表失败：%s", err)
 		}
-
-		// 从嵌入的FS中读取index.html
 		indexContent, err := fs.ReadFile(distFS, "index.html")
 		if err != nil {
-			// 【新增详细错误日志】
-			log.Printf("读取index.html失败：%s", err)
 			c.String(http.StatusInternalServerError, "加载前端页面失败：%s", err)
 			return
 		}
