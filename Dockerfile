@@ -29,6 +29,7 @@ COPY main.go ./
 
 # 复制前端构建结果到后端可访问的路径
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+COPY --from=frontend-builder /app/frontend/src/assets/fonts/ ./frontend/src/assets/fonts/
 
 # 编译后端应用（启用CGO支持webp）
 RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o main ./main.go
@@ -51,10 +52,6 @@ COPY --from=backend-builder /app/main ./
 
 # 复制前端构建产物
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
-
-# 复制配置文件和创建必要目录
-COPY .env.example ./.env
-RUN mkdir -p ./data ./uploads
 
 # 暴露端口
 EXPOSE 8080
