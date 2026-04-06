@@ -1,12 +1,29 @@
 <template>
   <!-- 主要内容区域 -->
-  <div class="pt-6 md:px-6 lg:px-8 xl:container xl:mx-auto">
+  <div class="pt-6 md:px-4 xl:container xl:mx-auto">
     <!-- 上传区域 -->
     <section class="upload-section mb-6">
       <div class="bg-white dark:bg-dark-200 rounded-xl shadow-md dark:shadow-dark-md p-5 transition-all duration-300 hover:shadow-lg dark:hover:shadow-dark-lg">
-        <h2 class="section-title text-lg font-semibold mb-4 flex items-center gap-2">
-          <i class="ri-upload-line text-primary"></i>
-          图片上传
+        <h2 class="section-title text-lg font-semibold mb-4 flex justify-between items-center gap-2">
+          <span>
+            <i class="ri-upload-line text-primary"></i>
+            图片上传
+          </span>
+          <!-- 存储选择 -->
+          <div class="w-[40%] max-w-[210px]">
+              <select 
+                class="w-full px-3 py-2 border border-light-300 dark:border-dark-100 rounded-lg bg-white dark:bg-dark-200 text-sm outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                v-model="selectedBucket"
+                :disabled="isGuest()"
+                @change="handleBucketChange"
+              >
+                <option 
+                  v-for="bucket in presetBuckets" 
+                  :key="bucket.id"
+                  :value="bucket.id"
+                >{{ bucket.name }}  ({{ bucket.type }})</option>
+              </select>
+            </div>
         </h2>
 
         <!-- 拖拽上传区域 -->
@@ -29,10 +46,16 @@
               <i class="ri-upload-cloud-line"></i>
             </div>
             <h3 class="text-base font-medium mb-2">选择或拖拽图片到此处上传</h3>
-            <p class="text-secondary text-sm mb-4">支持 JPG、PNG、GIF、WebP、SVG 格式，单张不超过 10MB</p>
+            <p class="text-secondary text-sm mb-4">支持 JPG、PNG、GIF、WebP、SVG 格式</p>
             <button class="bg-primary hover:bg-primary-dark text-white px-5 py-2 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 mx-auto">
               <i class="ri-file-image-line"></i>
               选择图片
+            </button>
+            <button 
+            @click.stop="uploadbyurlmodal"
+            class="py-2 px-5 hover:bg-purple-500/90 bg-purple-500 dark:bg-purple-600 mt-4 text-white font-medium rounded-lg transition-all duration-200 flex items-center justify-center mx-auto">
+              <i class="ri-links-line"></i>
+              从URL上传
             </button>
             <p class="paste-tip text-sm text-secondary flex items-center justify-center gap-2 mt-3">
               支持 Ctrl+V 粘贴剪贴板图片，或直接拖入图片
@@ -273,6 +296,12 @@ const customTagInput = ref('');
 const selectedTags = ref([]);
 const tagError = ref('');
 
+// 存储相关
+const presetBuckets = ref([
+  { id: "1", name: '默认存储', type: "default" },
+]);
+const selectedBucket = ref("1");
+
 // 预览相关
 const activeCopyMenu = ref(null);
 let previewCopyMenu = false;
@@ -281,6 +310,15 @@ let previewModalInstance = null;
 let progressInterval = null; // 上传进度定时器
 
 // ====================== 工具函数 ======================
+/**
+ * 检查是否为游客
+ */
+function isGuest() {
+  const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+  if(userInfo?.isTourist == true) return true;
+  else return false;
+}
+
 /**
  * 获取完整的图片URL
  */
@@ -350,11 +388,11 @@ const getMarkdownCode = (image) => {
 
 // ====================== API 请求函数 ======================
 /**
- * 获取标签列表
+ * 获取上传配置
  */
-const getTagsList = async () => {
+const getUploadConfig = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/tags`, {
+    const response = await fetch(`${API_BASE_URL}/api/uploadConfig`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -364,13 +402,21 @@ const getTagsList = async () => {
     
     const result = await response.json();
     if (response.ok && result.code === 200) {
-      presetTags.value = result.data?.list || [];
+      presetTags.value = result.data?.tags || [];
+      presetBuckets.value = result.data?.buckets || [];
+      const bucketId = localStorage.getItem('currentBucket');
+      if (bucketId != null){
+        const num = parseInt(bucketId);
+        selectedBucket.value = Number.isNaN(num) ? '1' : bucketId;
+      } else {
+        selectedBucket.value = result.data?.default_bucket || '1';
+      }
     } else {
-      throw new Error(result.message || '获取标签列表失败');
+      throw new Error(result.message || '获取上传配置失败');
     }
   } catch (error) {
-    console.error('获取标签失败:', error);
-    Message.error(error.message || '获取标签列表失败');
+    console.error('获取上传配置失败:', error);
+    Message.error(error.message || '获取上传配置失败');
   }
 };
 
@@ -616,6 +662,8 @@ const uploadFiles = async (files) => {
     if (selectedTags.value.length > 0) {
       formData.append('tags', JSON.stringify(selectedTags.value));
     }
+    // 携带存储桶信息
+    formData.append('bucket_id', selectedBucket.value || '1')
     
     const response = await fetch(`${API_BASE_URL}/api/upload/images`, {
       method: 'POST',
@@ -786,6 +834,15 @@ const copyImageLink = async (image, type) => {
   }
 };
 
+/**
+ * 存储选择处理事件，设置后优先使用选择的存储
+ */
+const handleBucketChange = () => {
+  const bucketId = selectedBucket.value;
+  if (!bucketId) return;
+  localStorage.setItem('currentBucket', bucketId);
+};
+
 const deleteImage = (imageId) => {
   const modal = new PopupModal({
     title: '确认删除',
@@ -899,7 +956,7 @@ const previewImage = (image) => {
           >
               <div class="relative max-w-full w-fill max-h-[360px] min-h-[260px] rounded-lg overflow-hidden animate-pulse flex items-center justify-center">
                   <div class="absolute inset-0 flex items-center justify-center">
-                      <svg class="w-10 h-10 text-slate-300 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="transform: scaleX(-1) scaleY(-1);">
+                      <svg class="w-10 h-10 text-slate-300 animate-spin loading-svg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="transform: scaleX(-1) scaleY(-1);">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                   </div>
@@ -907,7 +964,7 @@ const previewImage = (image) => {
                       src="${getFullUrl(image.url)}"
                       alt="${image.filename}" 
                       class="max-w-full w-fill max-h-[360px] min-h-[260px] object-contain rounded-lg relative z-10 opacity-0 transition-opacity duration-300"
-                      onload="this.classList.remove('opacity-0'); this.parentElement.classList.remove('animate-pulse')"
+                      onload="this.classList.remove('opacity-0'); this.parentElement.classList.remove('animate-pulse'); this.parentElement.querySelector('.loading-svg').classList.add('hidden');"
                       onerror="this.parentElement.classList.remove('animate-pulse'); this.classList.remove('opacity-0'); this.src='${errorImg}';"
                   />
               </div>
@@ -1002,6 +1059,136 @@ const previewImage = (image) => {
 };
 
 /**
+ * 从URL上传图片
+ */
+const uploadbyurlmodal = () => {
+  // 构建标签选项
+  const tagList = [
+    { value: "0", label: "不添加"}
+  ];
+  presetTags.value.forEach(tag => {
+    tagList.push({ value: tag.id, label: tag.name });
+  });
+  const storageList = [];
+  presetBuckets.value.forEach(storage => {
+    storageList.push({ value: storage.id, label: storage.name });
+  })
+  const modal = new PopupModal({
+    title: '从URL上传图片',
+    type: 'form',
+    formFields: [
+      {
+        name: 'url',
+        label: '图片链接',
+        type: 'text',
+        required: true,
+        placeholder: '请输入图片链接'
+      },
+      {
+        name: 'tag_id',
+        label: 'Tag标签',
+        type: 'select',
+        required: true,
+        defaultValue: "0",
+        options: tagList
+      },
+      {
+        name: 'bucket_id',
+        label: '存储',
+        type: 'select',
+        required: true,
+        defaultValue: "1",
+        options: storageList
+      }
+    ],
+    buttons: [
+      {
+        text: '取消',
+        type: 'default',
+        callback: (modal) => {
+          modal.close();
+        }
+      },
+      {
+        text: '确定',
+        type: 'primary',
+        callback: (modal) => {
+          const formData = serializeForm(modal);
+          if(formData['url'].length === 0) {
+            Message.error('请输入图片链接');
+            return
+          }
+          postuploadbyurl(formData);
+          modal.close();
+        }
+      }
+    ]
+  });
+  modal.open();
+}
+
+const postuploadbyurl = async (formData) => {
+  try {
+    const res = await fetch(`/api/images/url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      },
+      body: JSON.stringify(formData)
+    });
+    const result = await res.json();
+    if (res.ok && result.code === 200) {
+      await loadRecentImages();
+      Message.success('上传成功');
+    } else {
+      throw new Error(result.message || '上传失败');
+    }
+  } catch (err) {
+    console.error(err);
+    Message.error(err.message || '上传失败');
+  }
+}
+
+/**
+ * 序列化表单数据
+ * @param {Object} modal - 弹窗实例
+ * @returns {Object} 表单数据对象
+ */
+const serializeForm = (modal) => {
+  const form = modal.content?.querySelector('form');
+  if (!form) {
+    console.warn('未找到表单元素');
+    return {};
+  }
+
+  return Array.from(form.elements).reduce((acc, element) => {
+    const { name, disabled, type, checked, value } = element;
+    
+    // 跳过无name、禁用的元素
+    if (!name || disabled) return acc;
+    
+    // 处理复选框/单选框
+    if ((type === 'checkbox' || type === 'radio') && !checked) return acc;
+    
+    // 处理文件输入
+    if (type === 'file') {
+      acc[name] = element.files.length > 0 ? element.files[0].name : '';
+      return acc;
+    }
+    
+    // 处理多值字段
+    if (acc[name]) {
+      acc[name] = Array.isArray(acc[name]) ? [...acc[name], value] : [acc[name], value];
+    } else {
+      acc[name] = value;
+    }
+    
+    return acc;
+  }, {});
+};
+
+/**
  * 清理预览相关资源
  */
 const cleanupPreview = () => {
@@ -1040,7 +1227,7 @@ const handleGlobalClick = (e) => {
 // ====================== 生命周期 ======================
 onMounted(() => {
   // 初始化数据
-  getTagsList();
+  getUploadConfig();
   setTimeout(loadRecentImages, 100);
   
   // 注册全局事件

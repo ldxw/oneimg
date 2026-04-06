@@ -62,12 +62,14 @@ func (uc *UploadContext) ParseAndValidateFiles() ([]*multipart.FileHeader, error
 }
 
 // GetStorageUploader 根据存储类型获取上传器实例
-func (uc *UploadContext) GetStorageUploader(setting *models.Settings) (interfaces.StorageUploader, error) {
-	switch setting.GetEffectiveStorageType() {
+func (uc *UploadContext) GetStorageUploader(setting *models.Settings, bucket *models.Buckets) (interfaces.StorageUploader, error) {
+	switch bucket.Type {
 	case "default":
 		return &DefaultUploader{}, nil
-	case "s3", "r2":
-		return &S3R2Uploader{}, nil
+	case "r2":
+		return &R2Uploader{}, nil
+	case "s3":
+		return &S3Uploader{}, nil
 	case "webdav":
 		return &WebDAVUploader{}, nil
 	case "ftp":
@@ -75,6 +77,6 @@ func (uc *UploadContext) GetStorageUploader(setting *models.Settings) (interface
 	case "telegram":
 		return &TelegramUploader{}, nil
 	default:
-		return nil, fmt.Errorf("不支持的存储类型：%s", setting.StorageType)
+		return nil, fmt.Errorf("不支持的存储类型：%s", bucket.Type)
 	}
 }
