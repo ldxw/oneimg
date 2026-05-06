@@ -48,19 +48,25 @@ func (u *R2Uploader) Upload(c *gin.Context, setting *models.Settings, bucket *mo
 	}
 	defer file.Close()
 
+	// 获取角色
+	userRole := c.GetInt("user_role")
+
 	// 处理图片
-	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting)
+	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting, userRole)
 	if err != nil {
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
 
 	uniqueFileName := processedImage.UniqueFileName
 
-	// 创建年/月子目录
-	now := time.Now()
-	year := now.Format("2006")
-	month := now.Format("01")
-	subDir := PathJoin("uploads", year, month)
+	// 创建目录路径
+	uploadPath := setting.DefaultPath
+	if uploadPath == "" {
+		uploadPath = "uploads/{year}/{month}"
+	}
+	subDir := images.ImageSvc.ReplaceMagicVariables(uploadPath, fileHeader.Filename, userRole)
+	subDir = strings.TrimPrefix(subDir, "/") // S3/R2 key 通常不以 / 开头
+
 	objectKey := PathJoin(subDir, uniqueFileName)
 
 	// 获取R2客户端
@@ -92,16 +98,16 @@ func (u *R2Uploader) Upload(c *gin.Context, setting *models.Settings, bucket *mo
 	if setting.Thumbnail {
 		_, err = client.PutObject(context.TODO(), &awss3.PutObjectInput{
 			Bucket:      aws.String(storageConfig.R2Bucket),
-			Key:         aws.String(PathJoin("uploads", year, month, "thumbnails", uniqueFileName)), // 缩略图存放路径
+			Key:         aws.String(PathJoin(subDir, "thumbnails", uniqueFileName)), // 缩略图存放路径
 			Body:        bytes.NewReader(processedImage.ThumbnailBytes),
 			ContentType: aws.String("image/webp"),
 		})
 		if err == nil {
-			thumbnailURL = "/" + PathJoin("uploads", year, month, "thumbnails", uniqueFileName)
+			thumbnailURL = "/" + PathJoin(subDir, "thumbnails", uniqueFileName)
 		}
 	}
 
-	url := "/" + PathJoin("uploads", year, month, uniqueFileName)
+	url := "/" + PathJoin(subDir, uniqueFileName)
 
 	return &interfaces.ImageUploadResult{
 		Success:      true,
@@ -132,19 +138,25 @@ func (u *S3Uploader) Upload(c *gin.Context, setting *models.Settings, bucket *mo
 	}
 	defer file.Close()
 
+	// 获取角色
+	userRole := c.GetInt("user_role")
+
 	// 处理图片
-	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting)
+	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting, userRole)
 	if err != nil {
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
 
 	uniqueFileName := processedImage.UniqueFileName
 
-	// 创建年/月子目录
-	now := time.Now()
-	year := now.Format("2006")
-	month := now.Format("01")
-	subDir := PathJoin("uploads", year, month)
+	// 创建目录路径
+	uploadPath := setting.DefaultPath
+	if uploadPath == "" {
+		uploadPath = "uploads/{year}/{month}"
+	}
+	subDir := images.ImageSvc.ReplaceMagicVariables(uploadPath, fileHeader.Filename, userRole)
+	subDir = strings.TrimPrefix(subDir, "/") // S3/R2 key 通常不以 / 开头
+
 	objectKey := PathJoin(subDir, uniqueFileName)
 
 	// 获取S3客户端
@@ -176,16 +188,16 @@ func (u *S3Uploader) Upload(c *gin.Context, setting *models.Settings, bucket *mo
 	if setting.Thumbnail {
 		_, err = client.PutObject(context.TODO(), &awss3.PutObjectInput{
 			Bucket:      aws.String(storageConfig.S3Bucket),
-			Key:         aws.String(PathJoin("uploads", year, month, "thumbnails", uniqueFileName)), // 缩略图存放路径
+			Key:         aws.String(PathJoin(subDir, "thumbnails", uniqueFileName)), // 缩略图存放路径
 			Body:        bytes.NewReader(processedImage.ThumbnailBytes),
 			ContentType: aws.String("image/webp"),
 		})
 		if err == nil {
-			thumbnailURL = "/" + PathJoin("uploads", year, month, "thumbnails", uniqueFileName)
+			thumbnailURL = "/" + PathJoin(subDir, "thumbnails", uniqueFileName)
 		}
 	}
 
-	url := "/" + PathJoin("uploads", year, month, uniqueFileName)
+	url := "/" + PathJoin(subDir, uniqueFileName)
 
 	return &interfaces.ImageUploadResult{
 		Success:      true,
@@ -216,8 +228,11 @@ func (u *WebDAVUploader) Upload(c *gin.Context, setting *models.Settings, bucket
 	}
 	defer file.Close()
 
+	// 获取角色
+	userRole := c.GetInt("user_role")
+
 	// 处理图片
-	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting)
+	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting, userRole)
 	if err != nil {
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
@@ -225,12 +240,18 @@ func (u *WebDAVUploader) Upload(c *gin.Context, setting *models.Settings, bucket
 	// 生成唯一文件名
 	uniqueFileName := processedImage.UniqueFileName
 
-	// 创建年/月子目录
-	now := time.Now()
-	year := now.Format("2006")
-	month := now.Format("01")
-	subDir := filepath.Join("uploads", year, month)
-	objectPath := filepath.Join("/", subDir, uniqueFileName)
+	// 创建目录路径
+	uploadPath := setting.DefaultPath
+	if uploadPath == "" {
+		uploadPath = "uploads/{year}/{month}"
+	}
+	subDir := images.ImageSvc.ReplaceMagicVariables(uploadPath, fileHeader.Filename, userRole)
+	// WebDAV 路径通常需要以 / 开头
+	if !strings.HasPrefix(subDir, "/") {
+		subDir = "/" + subDir
+	}
+
+	objectPath := PathJoin(subDir, uniqueFileName)
 
 	// 获取存储配置
 	storageConfig := buckets.ConvertToWebDavBucket(bucket.Config)
@@ -252,14 +273,14 @@ func (u *WebDAVUploader) Upload(c *gin.Context, setting *models.Settings, bucket
 	// 检查是否上传缩略图
 	thumbnailURL := ""
 	if setting.Thumbnail {
-		err = client.WebDAVUpload(context.TODO(), filepath.Join("/", subDir, "thumbnails", uniqueFileName), bytes.NewReader(processedImage.ThumbnailBytes))
+		err = client.WebDAVUpload(context.TODO(), PathJoin(subDir, "thumbnails", uniqueFileName), bytes.NewReader(processedImage.ThumbnailBytes))
 		if err == nil {
-			thumbnailURL = "/uploads/" + year + "/" + month + "/thumbnails/" + uniqueFileName
+			thumbnailURL = PathJoin(subDir, "thumbnails", uniqueFileName)
 		}
 	}
 
 	// 构建访问URL
-	url := "/uploads/" + year + "/" + month + "/" + uniqueFileName
+	url := PathJoin(subDir, uniqueFileName)
 
 	return &interfaces.ImageUploadResult{
 		Success:      true,
@@ -290,8 +311,11 @@ func (u *FTPUploader) Upload(c *gin.Context, setting *models.Settings, bucket *m
 	}
 	defer file.Close()
 
+	// 获取角色
+	userRole := c.GetInt("user_role")
+
 	// 处理图片（压缩、生成缩略图等）
-	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting)
+	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting, userRole)
 	if err != nil {
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
@@ -299,11 +323,12 @@ func (u *FTPUploader) Upload(c *gin.Context, setting *models.Settings, bucket *m
 	// 生成唯一文件名
 	uniqueFileName := processedImage.UniqueFileName
 
-	// 构建FTP目录结构（年/月）
-	now := time.Now()
-	year := now.Format("2006")
-	month := now.Format("01")
-	subDir := PathJoin("uploads", year, month)
+	// 构建FTP目录结构
+	uploadPath := setting.DefaultPath
+	if uploadPath == "" {
+		uploadPath = "uploads/{year}/{month}"
+	}
+	subDir := images.ImageSvc.ReplaceMagicVariables(uploadPath, fileHeader.Filename, userRole)
 	objectPath := PathJoin(subDir, uniqueFileName)
 
 	// 获取存储配置
@@ -336,11 +361,11 @@ func (u *FTPUploader) Upload(c *gin.Context, setting *models.Settings, bucket *m
 			"image/webp",
 		)
 		if err == nil {
-			thumbnailURL = "/uploads/" + year + "/" + month + "/thumbnails/" + uniqueFileName
+			thumbnailURL = "/" + PathJoin(subDir, "thumbnails", uniqueFileName)
 		}
 	}
 
-	url := "/uploads/" + year + "/" + month + "/" + uniqueFileName
+	url := "/" + PathJoin(subDir, uniqueFileName)
 
 	return &interfaces.ImageUploadResult{
 		Success:      true,
@@ -371,21 +396,27 @@ func (u *DefaultUploader) Upload(c *gin.Context, setting *models.Settings, bucke
 	}
 	defer file.Close()
 
+	// 获取角色
+	userRole := c.GetInt("user_role")
+
 	// 处理图片
-	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting)
+	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting, userRole)
 	if err != nil {
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
 
 	uniqueFileName := processedImage.UniqueFileName
 
-	// 创建年/月子目录
-	now := time.Now()
-	year := now.Format("2006")
-	month := now.Format("01")
-	subDir := filepath.Join("uploads", year, month)
+	// 创建目录路径
+	uploadPath := setting.DefaultPath
+	if uploadPath == "" {
+		uploadPath = "uploads/{year}/{month}"
+	}
+	subDir := images.ImageSvc.ReplaceMagicVariables(uploadPath, fileHeader.Filename, userRole)
+	// 本地存储通常不以 / 开头（相对路径）
+	subDir = strings.TrimPrefix(subDir, "/")
 
-	// 确保年月子目录存在
+	// 确保子目录存在
 	fullSubDir := filepath.Join(".", subDir)
 	if err := ensureUploadDir(fullSubDir); err != nil {
 		return nil, fmt.Errorf("创建子目录失败：%v", err)
@@ -409,12 +440,12 @@ func (u *DefaultUploader) Upload(c *gin.Context, setting *models.Settings, bucke
 				log.Println(err)
 				// 忽略错误
 			}
-			thumbnailURL = "/uploads/" + year + "/" + month + "/thumbnails/" + uniqueFileName
+			thumbnailURL = "/" + PathJoin(subDir, "thumbnails", uniqueFileName)
 		}
 	}
 
-	// 构建访问URL (包含年/月子目录)
-	fileURL := "/uploads/" + year + "/" + month + "/" + uniqueFileName
+	// 构建访问URL
+	fileURL := "/" + PathJoin(subDir, uniqueFileName)
 
 	return &interfaces.ImageUploadResult{
 		Success:      true,
@@ -445,8 +476,11 @@ func (u *TelegramUploader) Upload(c *gin.Context, setting *models.Settings, buck
 	}
 	defer file.Close()
 
+	// 获取角色
+	userRole := c.GetInt("user_role")
+
 	// 处理图片
-	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting)
+	processedImage, err := images.ImageSvc.ProcessImage(file, fileHeader, *setting, userRole)
 	if err != nil {
 		return nil, fmt.Errorf("图片处理失败: %v", err)
 	}
@@ -462,9 +496,12 @@ func (u *TelegramUploader) Upload(c *gin.Context, setting *models.Settings, buck
 	// 	return nil, fmt.Errorf("telegram receivers 不能为空")
 	// }
 
-	now := time.Now()
-	year := now.Format("2006")
-	month := now.Format("01")
+	// 创建目录路径
+	uploadPath := setting.DefaultPath
+	if uploadPath == "" {
+		uploadPath = "uploads/{year}/{month}"
+	}
+	subDir := images.ImageSvc.ReplaceMagicVariables(uploadPath, fileHeader.Filename, userRole)
 
 	// 5. 初始化TG客户端
 	tgClient := telegram.NewClient(storageConfig.TGBotToken)
@@ -499,13 +536,13 @@ func (u *TelegramUploader) Upload(c *gin.Context, setting *models.Settings, buck
 			// Telegram没有直接的URL，这里存储fileID作为标识
 			thumbFileIDURL = thumbFileID
 			thumbFileMessageID = thumbMessageID
-			thumbnailURL = fmt.Sprintf("/uploads/%s/%s/thumbnails/%s", year, month, uniqueFileName)
+			thumbnailURL = "/" + PathJoin(subDir, "thumbnails", uniqueFileName)
 		} else {
 			log.Printf("Telegram上传缩略图失败: %v", err)
 		}
 	}
 
-	url := "/uploads/" + year + "/" + month + "/" + uniqueFileName
+	url := "/" + PathJoin(subDir, uniqueFileName)
 
 	telegramModel := models.ImageTeleGram{
 		TGFileId:             fileID,

@@ -3,15 +3,13 @@
     <Navbar />
 
     <main class="min-h-screen px-2.5 pb-3 pt-[calc(var(--app-header-height-mobile)+8px)] sm:px-4 sm:pb-4 md:px-5 md:pb-5 md:pt-[calc(var(--app-header-height)+10px)] xl:px-6 2xl:px-8">
-      <div class="mx-auto max-w-[1440px]">
-        <div class="page-surface px-2.5 py-2.5 sm:px-3.5 sm:py-4 md:px-4 md:py-4 xl:px-4.5 xl:py-4.5">
-          <router-view />
-        </div>
+      <div class="mx-auto">
+        <router-view />
       </div>
     </main>
 
     <footer class="px-3 pb-4 sm:px-4 md:px-6 md:pb-5 xl:px-8">
-      <div class="mx-auto max-w-[1440px]">
+      <div class="mx-auto">
         <div class="flex flex-col gap-1.5 border-t border-slate-200/80 px-1 pt-3 text-center text-[11px] text-slate-500 dark:border-white/10 dark:text-slate-400 sm:text-xs md:flex-row md:items-center md:justify-between md:gap-2.5 md:text-sm">
           <div>
             © {{ year }}

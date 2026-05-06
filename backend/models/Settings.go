@@ -28,6 +28,8 @@ type Settings struct {
 	// 默认上传配置
 	MaxFileSize  int    `gorm:"column:max_file_size;default:10485760" json:"max_file_size"` // 文件最大上传大小
 	AllowedTypes string `gorm:"column:allowed_types;default:'image/jpeg,image/png,image/gif,image/webp,image/svg+xml'" json:"allowed_types"`
+	DefaultPath  string `gorm:"column:default_path;default:'/uploads/{year}/{moon}'" json:"default_path"` // 默认上传路径，魔法变量 {year} 年 {month} 月 {day} 日 {hour} 小时 {minute} 分钟 {random} 随机 {uuid} UUID {role} 角色（1 为管理员, 2 为游客）
+	FileName     string `gorm:"column:file_name;default:'{random}'" json:"file_name"`                     // 上传文件名称，魔法变量 {random} 随机数 {year} 年 {month} 月 {day} 日 {hour} 小时 {minute} 分钟 {second} 秒
 
 	// 水印设置
 	WatermarkEnable bool    `gorm:"column:watermark_enable;default:false" json:"watermark_enable"`    // 是否启用水印（默认不启用）

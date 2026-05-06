@@ -33,14 +33,13 @@ import (
 	"gorm.io/gorm"
 )
 
-func ImageProxy(c *gin.Context) {
-	// 获取并清理路径（修复路径拼接逻辑）
-	fullPath := c.Param("path")
-	if fullPath == "" || fullPath == "/" {
-		c.JSON(http.StatusBadRequest, result.Error(400, "请提供完整的访问路径，如 uploads/2025/11/abc.webp"))
-		return
+func ImageProxy(c *gin.Context) bool {
+	// 获取并清理路径
+	cleanPath := c.Request.URL.Path
+	if cleanPath == "" || cleanPath == "/" {
+		// 根路径不应由图片代理处理，由 NoRoute 后续逻辑处理
+		return false
 	}
-	cleanPath := fmt.Sprintf("/%s", strings.TrimPrefix("uploads"+fullPath, "/"))
 
 	// 解析水印参数
 	watermarkCfg := watermark.ParseWatermarkParams(c)
@@ -48,39 +47,36 @@ func ImageProxy(c *gin.Context) {
 	// 获取数据库实例
 	db := database.GetDB()
 	if db == nil || db.DB == nil {
-		c.JSON(http.StatusInternalServerError, result.Error(500, "数据库连接未初始化"))
-		return
+		return false
 	}
 
 	// 查询图片信息
 	var imageModel models.Image
 	sqlResult := db.DB.Where("Url = ? OR Thumbnail = ?", cleanPath, cleanPath).First(&imageModel)
 	if sqlResult.Error != nil {
-		c.JSON(http.StatusNotFound, result.Error(404, "图片不存在或已被删除"))
-		return
+		// 图片不存在，直接返回，交给 NoRoute 后续逻辑处理（如渲染 SPA）
+		return false
 	}
 
 	// 获取配置信息
 	setting, setErr := settings.GetSettings()
 	if setErr != nil {
 		c.JSON(http.StatusInternalServerError, result.Error(500, fmt.Sprintf("获取系统配置失败: %v", setErr)))
-		return
+		return true
 	}
 
 	// 检查是否开启来源白名单
 	if setting.RefererWhiteEnable && setting.RefererWhiteList != "" {
-		// 过滤本站域名
 		// 校验Referer白名单
 		if !checkReferer(c.Request.Referer(), setting.RefererWhiteList, GetSelfDomain(c)) {
 			c.JSON(http.StatusForbidden, result.Error(403, "来源非法"))
-			return
+			return true
 		}
 	}
 
 	// 校验图片元信息
 	if imageModel.Width == 0 && imageModel.Height == 0 {
 		log.Printf("图片[%s]元信息不完整（宽高为0），继续代理访问", cleanPath)
-		// 不直接返回错误，仅日志警告，避免影响正常访问
 	}
 
 	// 获取存储配置
@@ -88,29 +84,18 @@ func ImageProxy(c *gin.Context) {
 	if err := db.DB.Where("id = ?", imageModel.BucketId).First(&bucket).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusForbidden, result.Error(400, "存储配置不存在"))
-			return
+			return true
 		}
 		c.JSON(http.StatusForbidden, result.Error(400, "存储配置查询失败"))
-		return
+		return true
 	}
 
 	var imageUrl string
 	// 判断当前访问的是缩略图还是原图
 	if imageModel.Thumbnail == cleanPath {
-		imageUrl = imageModel.Thumbnail // 访问的是缩略图，直接用
-	} else if imageModel.Url == cleanPath {
-		imageUrl = imageModel.Url // 访问的是原图，直接用
-	} else {
-		// 兜底：优先缩略图，无则用原图（兼容异常场景）
 		imageUrl = imageModel.Thumbnail
-		if imageUrl == "" {
-			imageUrl = imageModel.Url
-		}
-	}
-	// URL为空则返回错误
-	if imageUrl == "" {
-		c.JSON(http.StatusNotFound, result.Error(404, "图片URL为空，无法访问"))
-		return
+	} else {
+		imageUrl = imageModel.Url
 	}
 
 	// 传递水印配置到各个代理函数
@@ -125,7 +110,7 @@ func ImageProxy(c *gin.Context) {
 		s3Client, err := s3.NewS3Client(setting, bucket)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, result.Error(500, fmt.Sprintf("R2客户端初始化失败: %v", err)))
-			return
+			return true
 		}
 		proxyR2File(c, imageUrl, imageModel.MimeType, imageModel.FileSize, bucket, s3Client, watermarkCfg)
 
@@ -134,7 +119,7 @@ func ImageProxy(c *gin.Context) {
 		s3Client, err := s3.NewS3Client(setting, bucket)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, result.Error(500, fmt.Sprintf("S3客户端初始化失败: %v", err)))
-			return
+			return true
 		}
 		// 代理S3/R2文件
 		proxyS3File(c, imageUrl, imageModel.MimeType, imageModel.FileSize, bucket, s3Client, watermarkCfg)
@@ -148,6 +133,8 @@ func ImageProxy(c *gin.Context) {
 	default:
 		c.JSON(http.StatusUnprocessableEntity, result.Error(422, fmt.Sprintf("不支持的存储类型: %s", imageModel.Storage)))
 	}
+
+	return true
 }
 
 // proxyR2File R2文件代理

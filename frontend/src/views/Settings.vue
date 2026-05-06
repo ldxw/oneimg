@@ -51,6 +51,44 @@
                                     选择后系统将使用该存储作为默认存储，游客仅能使用该存储
                                 </div>
                             </div>
+
+                            <!-- 默认存储路径 -->
+                            <div class="setting-group">
+                                <label class="field-label" for="default_path">
+                                    默认存储路径
+                                </label>
+                                
+                                <input 
+                                    id="default_path"
+                                    v-model="systemSettings.default_path"
+                                    type="text" 
+                                    class="input-modern"
+                                    placeholder="默认存储路径，默认 /uploads/{year}/{moon}"
+                                    @blur="handleFieldBlur('default_path', systemSettings.default_path)"
+                                />
+                                <div class="field-hint">
+                                    默认上传路径，魔法变量 {year} 年 {month} 月 {day} 日 {hour} 小时 {minute} 分钟 {random} 随机 {uuid} UUID {role} 角色（1 为管理员, 2 为游客）
+                                </div>
+                            </div>
+
+                            <!-- 上传文件名 -->
+                            <div class="setting-group">
+                                <label class="field-label" for="file_name">
+                                    上传文件名称
+                                </label>
+                                
+                                <input 
+                                    id="file_name"
+                                    v-model="systemSettings.file_name"
+                                    type="text" 
+                                    class="input-modern"
+                                    placeholder="上传文件名称，默认 {random}"
+                                    @blur="handleFieldBlur('file_name', systemSettings.file_name)"
+                                />
+                                <div class="field-hint">
+                                    上传文件名称，魔法变量 {random} 随机数 {year} 年 {month} 月 {day} 日 {hour} 小时 {minute} 分钟 {second} 秒
+                                </div>
+                            </div>
                             
                             <!-- TG Bot Token：失去焦点保存 -->
                             <div class="setting-group">
@@ -530,9 +568,9 @@
                             <div class="setting-row">
                                 <div>
                                     <p class="setting-row-title">保存源文件名</p>
-                                    <p class="setting-row-hint">启用保存原图功能时将不自动重命名。</p>
+                                    <p class="setting-row-hint">启用保存原图功能时将不自动重命名，”上传文件名称”设置也将失效。</p>
                                 </div>
-                                <label class="relative inline-flex cursor-pointer items-center">
+                                <label class="relative inline-flex cursor-pointer items-center self-end md:self-center">
                                     <input 
                                         type="checkbox" 
                                         v-model="systemSettings.save_original_name"
@@ -592,7 +630,9 @@ const systemSettings = reactive({
     save_original_name: false,
     default_storage: 1,
     max_file_size: 10485760,
-    allowed_types: 'image/jpeg,image/png,image/gif,image/webp,image/svg+xml'
+    allowed_types: 'image/jpeg,image/png,image/gif,image/webp,image/svg+xml',
+    default_path: '/uploads/{year}/{moon}',
+    file_name: '{random}'
 })
 
 const updateSetting = reactive({})
