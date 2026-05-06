@@ -107,6 +107,8 @@ func SanitizeSettingsForResponse(setting models.Settings) map[string]any {
 		"seo_icp":                 setting.SEOICP,
 		"public_security":         setting.PublicSecurity,
 		"seo_icon":                setting.SEOicon,
+		"default_path":            setting.DefaultPath,
+		"file_name":               setting.FileName,
 	}
 }
 

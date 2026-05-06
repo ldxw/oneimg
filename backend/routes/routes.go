@@ -3,7 +3,6 @@ package routes
 import (
 	"embed"
 	"io/fs"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -56,7 +55,6 @@ func SetupRoutes(frontendFS embed.FS) *gin.Engine {
 	r.StaticFS("/assets", http.FS(assetsFS))
 
 	// 静态资源
-	r.GET("/uploads/*path", controllers.ImageProxy)
 	r.StaticFile("/favicon.ico", "./frontend/dist/favicon.ico")
 
 	// API路由分组
@@ -131,23 +129,20 @@ func SetupRoutes(frontendFS embed.FS) *gin.Engine {
 		}
 	}
 
-	// 前端SPA路由支持
+	// 前端SPA路由与图片代理逻辑集成
 	r.NoRoute(func(c *gin.Context) {
-		// API路径返回404
-		if len(c.Request.URL.Path) > 4 && c.Request.URL.Path[:4] == "/api" {
+		// 1. API路径返回404
+		if strings.HasPrefix(c.Request.URL.Path, "/api") {
 			c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": "API Not Found"})
 			return
 		}
 
-		if files, err := fs.ReadDir(distFS, "."); err == nil {
-			var fileNames []string
-			for _, f := range files {
-				fileNames = append(fileNames, f.Name())
-			}
-			log.Printf("读取distFS文件列表成功：%v", fileNames)
-		} else {
-			log.Printf("读取distFS文件列表失败：%s", err)
+		// 2. 尝试通过图片代理识别图片路径
+		if controllers.ImageProxy(c) {
+			return
 		}
+
+		// 3. 回退到前端 SPA 页面
 		indexContent, err := fs.ReadFile(distFS, "index.html")
 		if err != nil {
 			c.String(http.StatusInternalServerError, "加载前端页面失败：%s", err)

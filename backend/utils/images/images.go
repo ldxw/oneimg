@@ -20,6 +20,7 @@ import (
 
 	"github.com/chai2010/webp"
 	"github.com/disintegration/imaging"
+	"github.com/google/uuid"
 	"golang.org/x/exp/slices"
 )
 
@@ -75,6 +76,7 @@ func (s *ImageService) ProcessImage(
 	file multipart.File,
 	header *multipart.FileHeader,
 	setting models.Settings,
+	userRole int,
 ) (*ProcessedImage, error) {
 	// 1. 读取文件内容（一次性读取，避免多次IO）
 	fileBytes, err := io.ReadAll(file)
@@ -128,12 +130,14 @@ func (s *ImageService) ProcessImage(
 
 	// 7. 处理文件名
 	fileName := ""
-	originalNameExt := filepath.Ext(originalFileName)
-	originalNameWithoutExt := strings.TrimSuffix(originalFileName, originalNameExt)
 	if setting.SaveOriginalName {
-		fileName = originalNameWithoutExt + outputExt[finalMimeType]
+		fileName = originalFileName
 	} else {
-		fileName = generateUniqueFileName(outputExt[finalMimeType])
+		pattern := setting.FileName
+		if pattern == "" {
+			pattern = "{random}"
+		}
+		fileName = s.ReplaceMagicVariables(pattern, originalFileName, userRole) + outputExt[finalMimeType]
 	}
 
 	// 8. 组装返回结果
@@ -414,10 +418,48 @@ func GetFileMimeType(header *multipart.FileHeader) string {
 }
 
 // generateUniqueFileName 生成唯一文件名
-func generateUniqueFileName(ext string) string {
+func generateUniqueFileName() string {
 	timestamp := time.Now().UnixNano()
 	hash := fmt.Sprintf("%x", timestamp)
 	rand.New(rand.NewSource(time.Now().UnixNano()))
 	randomNum := rand.Intn(900) + 100
-	return fmt.Sprintf("%s%d%s", hash, randomNum, ext)
+	return fmt.Sprintf("%s%d", hash, randomNum)
+}
+
+// ReplaceMagicVariables 替换魔法变量
+func (s *ImageService) ReplaceMagicVariables(pattern string, originalName string, role int) string {
+	now := time.Now()
+
+	// 基础时间变量
+	pattern = strings.ReplaceAll(pattern, "{year}", now.Format("2006"))
+	pattern = strings.ReplaceAll(pattern, "{month}", now.Format("01"))
+	pattern = strings.ReplaceAll(pattern, "{moon}", now.Format("01"))
+	pattern = strings.ReplaceAll(pattern, "{day}", now.Format("02"))
+	pattern = strings.ReplaceAll(pattern, "{hour}", now.Format("15"))
+	pattern = strings.ReplaceAll(pattern, "{minute}", now.Format("04"))
+	pattern = strings.ReplaceAll(pattern, "{second}", now.Format("05"))
+
+	// 角色变量
+	roleStr := "guest"
+	if role == 1 {
+		roleStr = "admin"
+	}
+	pattern = strings.ReplaceAll(pattern, "{role}", roleStr)
+
+	// 随机变量
+	if strings.Contains(pattern, "{random}") {
+		pattern = strings.ReplaceAll(pattern, "{random}", generateUniqueFileName())
+	}
+
+	// UUID变量
+	if strings.Contains(pattern, "{uuid}") {
+		pattern = strings.ReplaceAll(pattern, "{uuid}", uuid.New().String())
+	}
+
+	// 原始文件名（不含扩展名）
+	ext := filepath.Ext(originalName)
+	nameWithoutExt := strings.TrimSuffix(originalName, ext)
+	pattern = strings.ReplaceAll(pattern, "{filename}", nameWithoutExt)
+
+	return pattern
 }
