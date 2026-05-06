@@ -27,9 +27,16 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true
       },
-      '/uploads': {
+      '^/.*\\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$': {
         target: 'http://localhost:8080',
-        changeOrigin: true
+        changeOrigin: true,
+        bypass: (req) => {
+          const url = req.url;
+          if (url.startsWith('/src') || url.startsWith('/assets') || url.startsWith('/node_modules') || url.startsWith('/@')) {
+            return url;
+          }
+          return null;
+        }
       }
     }
   },

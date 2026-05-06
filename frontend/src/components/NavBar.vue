@@ -1,6 +1,6 @@
 <template>
   <header class="fixed inset-x-0 top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm dark:border-white/10 dark:bg-slate-950/95 lg:left-[var(--app-sidebar-width)]">
-    <div class="mx-auto flex h-[var(--app-header-height-mobile)] max-w-[1440px] items-center justify-between gap-2 px-2.5 sm:px-4 md:h-[var(--app-header-height)] md:px-5 xl:px-6 2xl:px-8">
+    <div class="mx-auto flex h-[var(--app-header-height-mobile)] items-center justify-between gap-2 px-2.5 sm:px-4 md:h-[var(--app-header-height)] md:px-5 xl:px-6 2xl:px-8">
       <div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
         <button
           type="button"
